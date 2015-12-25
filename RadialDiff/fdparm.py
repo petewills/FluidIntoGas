@@ -3,37 +3,17 @@ import numpy as np
 import sys as sys
 import pylab as plt
 
-# fd parameters for radial diffusivity equation.
-def reg(delr=0.1):
+def irreg_cluster(pwr=1.0, deps=1.0):
     """
-    crteate a regular grid
-    :param delr: grid delta r
-    :return: r, dr
+    create an irregular grid based on power law map function. Using pwr=1 will give you a regular grid.
+    :param pwr: how much to expand the grid for larger r. 1.0 is regular
+    :param deps: regular grid interval in meters
+    :return: r, rreg, dr, rp, rpp
     """
-    rseg = [0.1, 100.0]
-
-    r = np.arange(rseg[0], rseg[1], delr)
-    rreg = np.arange(rseg[0], rseg[1], delr)
-    dr = np.ones(len(r)) * delr
-    rp = np.ones(len(r))
-    rpp = np.zeros(len(r))
-    rp_1_2 = rp[0]          # Not really needed for regular grid
-
-    return r, rreg, dr, rp, rpp, rp_1_2
-
-def irreg_cluster(expand=1.0, delr=0.1):
-    """
-    create an irregular grid based on map function
-    :param expand: how much to expand the grid for larger r. 1.0 is regular
-    :param delr: starting interval
-    :return: r, dr
-    """
-    deps = 5.0
     rseg = [deps, 1500.0]                        # Interval for both grids
     delr = rseg[1] - rseg[0]                    # step for uniform grid
     rreg = np.arange(rseg[0], rseg[1], deps)    # The uniform grid
     nreg = len(rreg)                            # number of nodes
-    pwr = 1.5
 
     r, dr = np.zeros(100000), np.ones(100000)*deps
     rp, rpp = np.zeros(10000), np.zeros(10000)
@@ -60,7 +40,7 @@ tvals = np.arange(0.0, tmax, dt)
 tprev = 0.0
 
 # r, dr = reg(delr=0.1)
-r, rreg, dr, rp, rpp = irreg_cluster()
+r, rreg, dr, rp, rpp = irreg_cluster(pwr=1.5, deps=5.0)
 
 plt.figure(1)
 ax = plt.subplot(1,3,1)
@@ -85,7 +65,6 @@ plt.ylabel('dr')
 plt.plot(r, dr, 'ro', label='irregular')
 plt.plot(rreg, np.ones(len(r)), 'bo', label='regular')
 plt.grid()
-# plt.ylim([-0.5, 1.5])
 plt.legend()
 plt.show()
 

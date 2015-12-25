@@ -6,7 +6,6 @@ import pylab as plt
 
 """
 Compute pressures using the radial diffusion equation, for input into ndi
-Used to simulate pressure in 31-08
 Creates an ascii version of an int file
 """
 
@@ -147,10 +146,6 @@ plt.figure(5)
 rad = [2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 264.0, 528.0, 1024.0]
 nx = len(rad)
 for i in range(nx):
-    # if ip>1:
-    #     axn = plt.subplot(1, nx, ip, sharex=ax1, sharey=ax1)
-    # else:
-    #     ax1 = plt.subplot(1, nx, ip)
     Tp, P = [], []
     for t in range(nt):
         dt = (tlim[1]) * 3600 * 24
@@ -162,10 +157,6 @@ for i in range(nx):
         Pdn = prm.p0 * lib.ei(s) / 1000 / 1000
         P.append(Pup - Pdn)
         Tp.append(t+1)
-        # if (i==nx-1):
-        #     plt.legend()
-        # fr = plt.gca()
-        # fr.text(0.5, 0.85, 'Radius '+str(rad[i]), transform=fr.transAxes, fontsize=12, horizontalalignment='center')
     plt.plot(Tp, P, 'o-', label='Radius:'+str(rad[i]))
     print 'abs: ', Tp
     print 'abs: ', P
@@ -207,13 +198,7 @@ for i in range(nx):
         plt.scatter(r, yvU, c='k', edgecolors='none', label='Pressure-dwn', s=10)
         if (i==nx-1) and (j==nx-1):
             plt.legend()
-        # if ip>1:
-        #     axn2 = axn.twinx()
-        # else:
-        #     axn2 = ax1.twinx()
-        # plt.scatter(r, yder, c='g', edgecolors='none', label='P deriv', s=10)
 
-        #     plt.scatter(r, Sv, c='g', edgecolors='none', label='Ei Arg') # , 'ro', , markersize=2)
         fr = plt.gca()
         fr.text(0.5, 0.85, 'Day '+str(t), transform=fr.transAxes, fontsize=12, horizontalalignment='center')
         plt.grid()

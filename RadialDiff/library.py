@@ -84,8 +84,8 @@ def plot_result(r, tvals, yp, fig=10, compare=False):
     """
     plt.figure(fig)
     plt.subplot(1,3,1)
-    plt.title('Well Pressure(MPa)')
-    plt.xlabel('Radius node')
+    plt.title('FD Well Pressure(MPa)')
+    plt.xlabel('Radial node')
     plt.ylabel('Time step')
     plt.imshow(yp, aspect='auto')
     plt.grid()
