@@ -10,10 +10,12 @@ from scipy.integrate import odeint as odeint
 import sys as sys
 import math as math
 
-def linesolve():
+def linesolve(lr, gp, tvec):
     """
     Solve the radial diffusivity equation using the method of lines
     :return: Pressure grid in time and space
+    :param lr: radius of liquid front
+    :param gp: gas pressure at that front = boundary condirion
     """
     def begave(vec):
         """
@@ -26,18 +28,21 @@ def linesolve():
 
         return bave
 
-    def rhs(y, t):
+    def rhs(y, t, lr, tv):
         """
         Defines a rhs, where lhs is simply the time derivative
         1/r { P' + r P""}
         Note that the arrays have no unphysical nodes
         :param y: a single time step of the radial pressure vector
         :param t: Current time in simulation
+        :param lr: Fluid front radius
+        :param tv: vector of times in the nstep grid(in seconds)
         """
-
         # Use this to limit rhs messages
+        index2 = int(t / fdprm.dt_fine)
+        index3 = np.searchsorted(fdprm.r, lr[index2])
         if t > fdprm.tprev:
-            print 'rhs t', t / 3600, ' hours'
+            print 'rhs t', t / 3600, ' hours', index2, index3, t, tv[index2], lr[index2], fdprm.r[index3]
             fdprm.tprev = t
 
         nr = len(y)             # All points are physically in the model
@@ -67,7 +72,7 @@ def linesolve():
 
     # Loop over times
     h0 = 0.001
-    y, output = odeint(rhs, y0, fdprm.tvals, h0=h0, hmax=2000.0, mxstep=2000, full_output=True)
+    y, output = odeint(rhs, y0, fdprm.tvals, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
 
 
     plot_result(fdprm.r, fdprm.tvals, y, fig=10, compare=True)          # Plot results on IRREGULAR grid

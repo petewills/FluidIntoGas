@@ -10,7 +10,7 @@ def irreg_cluster(pwr=1.0, deps=1.0):
     :param deps: regular grid interval in meters
     :return: r, rreg, dr, rp, rpp
     """
-    rseg = [deps, 1500.0]                        # Interval for both grids
+    rseg = [deps, 500.0]                        # Interval for both grids
     delr = rseg[1] - rseg[0]                    # step for uniform grid
     rreg = np.arange(rseg[0], rseg[1], deps)    # The uniform grid
     nreg = len(rreg)                            # number of nodes
@@ -23,6 +23,7 @@ def irreg_cluster(pwr=1.0, deps=1.0):
         rpp[i] = pwr * (pwr - 1) / delr * (lam**(pwr - 2))
         r[i] = rseg[0] + (lam**pwr) * delr
 
+
     r = r[:nreg]
     dr = dr[:nreg]
     rp = rp[:nreg]
@@ -33,12 +34,16 @@ def irreg_cluster(pwr=1.0, deps=1.0):
 
 # Time stepping for the model
 # Time is measured in seconds.
-tmax = 3600*6                            # seconds to run simulation
-nt = 10
+tmax = 3600*500                           # seconds to run simulation
+nt = 20
 dt = int(tmax / nt)                       # time step in seconds
 nstep = int(tmax / dt)                    # Number of steps to run
 tvals = np.arange(0.0, tmax, dt)
 tprev = 0.0
+
+# We have a very fine time grid used to find liquid radius in rhs
+dt_fine = 10.0          # Fine grid for search of lr in rhs
+nstep_fine = int(tmax / dt_fine)
 
 # r, dr = reg(delr=0.1)
 r, rreg, dr, rp, rpp = irreg_cluster(pwr=1.5, deps=5.0)
