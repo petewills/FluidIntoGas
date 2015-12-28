@@ -30,6 +30,7 @@ def irreg_cluster(pwr=1.0, deps=1.0):
 
     return r, rreg, dr, rp, rpp
 
+
 # Time stepping for the model
 # Time is measured in seconds.
 tmax = 3600*6                            # seconds to run simulation
