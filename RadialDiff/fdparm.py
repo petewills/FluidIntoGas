@@ -48,7 +48,7 @@ nstep_fine = int(tmax / dt_fine)
 # r, dr = reg(delr=0.1)
 r, rreg, dr, rp, rpp = irreg_cluster(pwr=1.5, deps=5.0)
 
-plt.figure(1)
+plt.figure(61)
 ax = plt.subplot(1,3,1)
 plt.title("Irregular Grid Map Jacobian rp")
 plt.xlabel('r(m)')
@@ -72,7 +72,7 @@ plt.plot(r, dr, 'ro', label='irregular')
 plt.plot(rreg, np.ones(len(r)), 'bo', label='regular')
 plt.grid()
 plt.legend()
-plt.show()
+# plt.show()
 
 
 

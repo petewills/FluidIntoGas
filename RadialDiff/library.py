@@ -10,6 +10,130 @@ from scipy.integrate import odeint as odeint
 import sys as sys
 import math as math
 
+def get_hyst_data(droot, fn_ts, fn_p, alignday=75, correctday=83):
+    """
+    Get the data for selected areal points for the hysteresis analysis
+    Files must have one header line: fn_p has well designation where the pressure is measured and start date
+                                     fn_ts has a label for each areal point (column) and start date
+                                     no date column. assume input data is agreeing!
+    :param droot: root for data files
+    :param fn_ts: filename timeshift
+    :param fn_p: filename pressure
+    :param alignday: puts in an extra timeshift for aligning curves at 20 days (fluid effect)
+    :param correctday: corrects the fluid column effects in pressure data
+    :return: pressure and timeshift vectors
+    """
+    f1 = open(droot+fn_ts, 'r')
+    f2 = open(droot+fn_p, 'r')
+    h1 = f1.readline().split()
+    h2 = f2.readline().split()
+    if len(h1) < 2 or len(h2) != 2:
+        print "bad data file headers: ", h1, h2
+        sys.exit()
+    print h1, h2
+    tsname = h1[1:]
+    pname = h2[1]
+    print pname, tsname
+    nwell = len(tsname)
+                           #
+
+
+    TSDAT = []
+    for line in f1.readlines():
+        a0 = line.split()
+        a1 = []
+        for i in range(nwell):
+            a1.append(float(a0[i]))
+        TSDAT.append(a1)
+
+    PDAT = []
+    for line in f2.readlines():
+        PDAT.append(float(line))
+
+    if len(PDAT) != len(TSDAT):
+        print 'Different data file sizes: ', len(PDAT), len(TSDAT)
+        sys.exit()
+
+    nday = len(PDAT)
+    q = []
+    for i in range(nwell):
+        q.append(np.transpose(TSDAT)[i])
+        q[i] -= q[i][alignday]
+    for i in range(nday):
+        if i >= correctday:
+            PDAT[i] = PDAT[i] + 0.7
+
+    plot_data(q, PDAT, tsname, fig=0)          # Consolidated plot of the data
+
+    return q, PDAT, tsname
+
+def plot_data( qD, PDATD, tsnameD, fig=0):
+    """
+    Simple consolidated plot of the hysteresis data
+    :param qD: timeshift lists
+    :param PDATD: pressure data
+    :param tsnameD: names of the data in qD
+    :return:
+    """
+    nwell = len(qD)
+    nday = len(qD[0])
+    nqD = np.zeros([nwell, nday])
+    for i in range(nwell):
+        for j in range(nday):
+            nqD[i,j] = -qD[i][j]
+
+    nyp = 2
+    nxp = 3        # Two rows. Upper is basic plots and lower is the indiv well crossplota
+    # Individual attributes
+    plt.figure(fig+1, figsize=(15,10))
+    ax = plt.subplot(2,3,1)
+    d = np.arange(1, len(PDATD)+1)
+    plt.scatter(d, PDATD, s=30, c=d, edgecolors='none')
+    plt.ylim([0, 12])
+    plt.xlabel('day')
+    plt.ylabel('Pressure(MPa)')
+    plt.title('Pressure')
+    plt.grid()
+
+    plt.subplot(2, 3, 2, sharex=ax)
+    for i in range(nwell):
+        plt.plot( d, qD[i], 'o-', label=tsnameD[i])
+    plt.xlabel('day')
+    plt.ylabel('Timeshift(ms)')
+    plt.title('Timeshifts')
+    plt.ylim([-1.4, 0.2])
+    plt.xlim([0, 160])
+    plt.legend()
+    plt.grid()
+
+    # Crossplots
+    ax1 = plt.subplot(2, 3, 3)
+    for i in range(nwell):
+        plt.plot(nqD[i], PDATD, 'o-', label=tsnameD[i])
+    plt.ylabel('Pressure(MPa)')
+    plt.xlabel('Timeshift(ms)')
+    plt.title("Crossplot")
+    plt.xlim([-0.2, 1.6])
+    plt.ylim([0, 12])
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(2, 3, 4, sharex=ax1, sharey=ax1)
+    ax2 = []
+    for i in range(nwell):
+        if i > 0:
+            ax2.append(plt.subplot( 2, 3, 4 + i, sharex=ax1, sharey=ax1))
+        plt.scatter( nqD[i], PDATD, s=30, c=d)# , edgecolors='none')
+        plt.annotate(tsnameD[i], xy=(0.5, 0.8), xycoords='axes fraction', fontsize=20)
+        plt.ylabel('Pressure(MPa)')
+        plt.xlabel('Timeshift(ms)')
+        plt.title("Crossplot")
+        plt.xlim([-0.2, 1.6])
+        plt.ylim([0, 12])
+        plt.grid()
+
+
+
 def linesolve(lr, gp, tvec):
     """
     Solve the radial diffusivity equation using the method of lines
