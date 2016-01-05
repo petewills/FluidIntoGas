@@ -67,7 +67,7 @@ def get_hyst_data(droot, fn_ts, fn_p, alignday=75, correctday=83):
 
     return q, PDAT, tsname
 
-def plot_data( qD, PDATD, tsnameD, fig=0):
+def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
     """
     Simple consolidated plot of the hysteresis data
     :param qD: timeshift lists
@@ -101,7 +101,7 @@ def plot_data( qD, PDATD, tsnameD, fig=0):
     plt.xlabel('day')
     plt.ylabel('Timeshift(ms)')
     plt.title('Timeshifts')
-    plt.ylim([-1.4, 0.2])
+    plt.ylim([-1.0, 0.6])
     plt.xlim([0, 160])
     plt.legend()
     plt.grid()
@@ -109,11 +109,11 @@ def plot_data( qD, PDATD, tsnameD, fig=0):
     # Crossplots
     ax1 = plt.subplot(2, 3, 3)
     for i in range(nwell):
-        plt.plot(nqD[i], PDATD, 'o-', label=tsnameD[i])
+        plt.plot(nqD[i], PDATD, 'o-', label=tsnameD[i], markersize=5)
     plt.ylabel('Pressure(MPa)')
     plt.xlabel('Timeshift(ms)')
     plt.title("Crossplot")
-    plt.xlim([-0.2, 1.6])
+    plt.xlim([ -0.6, 1.2])
     plt.ylim([0, 12])
     plt.legend()
     plt.grid()
@@ -128,9 +128,11 @@ def plot_data( qD, PDATD, tsnameD, fig=0):
         plt.ylabel('Pressure(MPa)')
         plt.xlabel('Timeshift(ms)')
         plt.title("Crossplot")
-        plt.xlim([-0.2, 1.6])
+        plt.xlim([-0.6, 1.2])
         plt.ylim([0, 12])
         plt.grid()
+
+    plt.suptitle(tit)
 
 
 

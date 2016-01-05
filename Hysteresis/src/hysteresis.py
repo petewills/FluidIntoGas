@@ -12,8 +12,8 @@ import pylab as plt
 import numpy as np
 import library as lib
 
-alignday=75
-correctday = 83
+alignday=65             # Align the curves here - at maximum...
+correctday = 83         # Correct for the "gas" in well - the pressure drop day
 q, pdat, tsname = lib.get_hyst_data(DATAROOT, "ts.dat", "p.dat", alignday=alignday, correctday=correctday)
 nwell = len(q)
 
@@ -21,8 +21,10 @@ nday = len(pdat)
 
 # p_init, p_max = 4.0, 11.0            # MPa
 t_init, t_max = 60.0, 120.0          # deg C
-ts_p_slope =  1.0 / 5.7              # ms/MPa. Positive is speedup. Positive P is negative. Read off soak data slope.
-ts_T_slope =  1.0 / 150.00           # ms / deg C. Positive T is negative.
+ts_p_slope =  1.0 / 5.3              # ms/MPa. Positive is speedup. Positive P is negative. Read off soak data slope.
+ts_T_slope =  1.0 / 80.00        # ms / deg C. Positive T is negative.
+s_t_slope = str(1/ts_T_slope)[:4]+ ' deg C/ms'
+s_p_slope = str(1/ts_p_slope)[:4]  + ' MPa/ms'
 
 T, P, TS, d = [], [], [], []
 for i in range(nday):
@@ -38,7 +40,7 @@ TSCAL = TS[alignday]
 for i in range(nday):
     TS[i] = TS[i] - TSCAL
 
-lib.plot_data([TS], pdat, tsname, fig=1)          # Consolodated plot of the data
+lib.plot_data([TS], pdat, tsname, fig=1, tit='T Slope: '+ s_t_slope + ';             P Slope: '+ s_p_slope)          # Consolodated plot of the data
 plt.show()
 
 # # Individual attributes
