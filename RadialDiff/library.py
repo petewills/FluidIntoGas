@@ -10,20 +10,284 @@ from scipy.integrate import odeint as odeint
 import sys as sys
 import math as math
 
-def get_hyst_data(droot, fn_ts, fn_p, alignday=75, correctday=83):
+
+def linesolve(lr, gp, tvec, fr):
+    """
+    Solve the radial diffusivity equation using the method of lines
+    :return: Pressure grid in time and space
+    :param lr: radius of liquid front
+    :param gp: gas pressure at that front = boundary condition
+    :param fr: fluid injection rate.
+    """
+    def begave(vec):
+        """
+        Get the average on the first two elements
+        :param vec:
+        :return: average
+        """
+        bave = (vec[0] + vec[1]) / 2.0
+
+        return bave
+
+    def rhs(y, t, lr, tv):
+        """
+        Defines a rhs, where lhs is simply the time derivative
+        1/r { P' + r P""}
+        Note that the arrays have no unphysical nodes
+        :param y: a single time step of the radial pressure vector
+        :param t: Current time in simulation
+        :param lr: Fluid front radius
+        :param tv: vector of times in the nstep grid(in seconds)
+        """
+        # Use this to limit rhs messages
+        index2 = int(t / fdprm.dt_fine)
+        index3 = np.searchsorted(fdprm.r, lr[index2])
+        if (t - fdprm.tprev) > fdprm.tmax/10:
+            print 'rhs t', t / 3600, ' hours', 'fluid radius: ', lr[index2], ' searched radius: ', fdprm.r[index3]
+            fdprm.tprev = t
+
+        nr = len(y)             # All points are physically in the model
+        y0 = y[1:nr-1]          # Chop two points at either end to form vector differences
+        rp = fdprm.rp[1:nr-1]
+        rpp = fdprm.rpp[1:nr-1]
+        r = fdprm.r                         # irregular grid
+        dr = fdprm.dr[1:nr-1]               # always regular grid version
+        ym = y[0:nr-2]
+        yp = y[2:nr]
+
+        pp_eps = (y0 - ym)/dr
+        ppp_eps = ((yp - 2.0*y0 + ym)/dr**2)
+        pp = pp_eps / rp
+        ppp = ppp_eps / rp**2 - pp_eps * rpp / rp**3
+
+        deriv = np.zeros(nr)
+        deriv[1:nr-1] = (pp + r[1:nr-1] * ppp) * prm.nu
+        deriv /= r
+        deriv[nr-1] = 0.0        # Dirichlet at boundary. There is no change to initial value
+        deriv[0] = deriv[1]      # Neuman at zero. [0] and [1] move lockstep having been set in y0
+
+        return deriv
+
+    y0 = np.ones(len(fdprm.r)) * prm.pi                         # y is on the regular grid
+    y0[0] = y0[1] + prm.qnorm * begave(fdprm.rp) / begave(fdprm.r) * begave(fdprm.dr)   # Boundary cond set at beginning. derives will preserve it.
+
+    # Loop over times. ODEINT is run twice as we have a shutin period at the end
+    h0 = 0.001
+    y_bef, output = odeint(rhs, y0, fdprm.tvals_bef, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
+    print 'Done first ODEINT', np.shape(y_bef), len(fdprm.tvals_bef)
+
+    y0 = y_bef[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
+    y0[1] = y0[0]
+
+    fdprm.prev = 0.0
+    y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
+    print 'Done second ODEINT', np.shape(y_aft), len(fdprm.tvals_aft)
+
+    y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
+    plot_result(fdprm.r, fdprm.tvals, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
+    plot_result_points(fdprm.r, fdprm.tvals, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
+    plt.show()
+
+def plot_result_points(r, tvals, yp, fig=10, compare=False, plot_r=[100.0]):
+    """
+    Plot the results and compare with ei if desired
+    :param r: radius vector
+    :param tvals: time values to compare
+    :param yp: result of fd simulation
+    :param fig: figure number
+    :param compare: True to compare with analytic
+    :param plot_r: list of spatial points to plot
+    :return:
+    """
+    plt.figure(fig)
+    ax = plt.subplot(1,2,1)
+    plt.title('FD Well Pressure(MPa)')
+    plt.xlabel('Time(days)')
+    plt.ylabel('Pressure(MPa)')
+    for pr in plot_r:
+        index3 = np.searchsorted(fdprm.r, pr)
+        y = np.zeros(len(tvals))
+        for (i, t) in enumerate(tvals):
+            y[i] = yp[i, index3]
+        plt.plot(tvals/3600.0/24.0, y / 1000 / 1000, 'o-', label=str(pr)+' meters')
+    plt.grid()
+    legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+    for label in legend.get_texts():
+        label.set_fontsize('x-small')
+
+    if compare:
+        plt.subplot(1,2,2, sharex=ax, sharey=ax)
+        plt.title('Exact FD Well Pressure(MPa)')
+        plt.xlabel('Time(days)')
+        plt.ylabel('Pressure(MPa)')
+        for pr in plot_r:
+            Pexact, x = [], []
+            for (i, t) in enumerate(tvals):
+                t_zerorate = t - prm.q_shutintime* 3600.0 * 24.0
+                s = prm.D * pr**2 / t
+                s_zr = prm.D * pr**2 / t_zerorate
+                x.append(t / 3600.0 / 24.0)
+                if (t <= prm.q_shutintime * 3600.0 * 24.0):
+                    Pexact.append((prm.pi + prm.p0 * ei(s))/1000.0/1000.0)
+                else:
+                    Pexact.append((prm.pi + prm.p0 * ei(s) - prm.p0 * ei(s_zr)) / 1000 / 1000)       # In MPa
+            plt.plot(x, Pexact, label=str(pr)+' meters')
+        plt.grid()
+        legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+        for label in legend.get_texts():
+            label.set_fontsize('x-small')
+
+def plot_result(r, tvals, yp, fig=10, compare=False):
+    """
+    Plot the results and compare with ei if desired
+    :param r: radius vector
+    :param tvals: time values to compare
+    :param yp: result of fd simulation
+    :param fig: figure number
+    :param compare: True to compare with analytic
+    :return:
+    """
+    plt.figure(fig)
+    plt.subplot(1,3,1)
+    plt.title('FD Well Pressure(MPa)')
+    plt.xlabel('Radial node')
+    plt.ylabel('Time step')
+    plt.imshow(yp, aspect='auto')
+    plt.grid()
+    plt.colorbar()
+
+    ax=plt.subplot(1,3,2)
+    plt.title('FD Well Pressure')
+    plt.xlabel('Radius(m)')
+    plt.ylabel('Pressure(MPa)')
+    for (i, t) in enumerate(tvals):
+        plt.plot(r, yp[i] / 1000 / 1000, label=str(t/3600.0)+' hours')
+    plt.grid()
+    legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+    for label in legend.get_texts():
+        label.set_fontsize('x-small')
+
+
+    if compare:                     # Plot comparison with exact solution
+        plt.subplot(1,3,3, sharex=ax, sharey=ax)
+        plt.title('Exact Well Pressure')
+        plt.xlabel('Radius(m)')
+        plt.ylabel('Pressure(MPa)')
+        for (i, t) in enumerate(tvals):
+            Pexact = []
+            t_zerorate = t - prm.q_shutintime* 3600.0 * 24.0
+            # t_zerorate = min(t, prm.q_shutintime * 3600.0 * 24.0)           # Transition from full rate to zero
+            for (j, rp) in enumerate(r):
+                s = prm.D * rp**2 / t
+                s_zr = prm.D * rp**2 / t_zerorate
+                if (t <= prm.q_shutintime * 3600.0 * 24.0):
+                    Pexact.append((prm.pi + prm.p0 * ei(s))/1000.0/1000.0)
+                else:
+                    Pexact.append((prm.pi + prm.p0 * ei(s) - prm.p0 * ei(s_zr)) / 1000 / 1000)       # In MPa
+            plt.plot(r, Pexact, label=str(t/3600.0)+' hours')
+        plt.grid()
+        legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+        for label in legend.get_texts():
+            label.set_fontsize('x-small')
+
+def ei(x):
+    """
+    exponential integral used in transient analysis
+    :param x: input arg
+    :return: ei
+    """
+
+    ei = expn(1, x)
+    return ei
+
+
+def testei(fig=1):
+    """
+    Test the exponential integral
+    :return:
+    """
+    xv = np.arange(0.001,1.0, 0.001)
+    yv = []
+    av = []
+    for (i, x) in enumerate(xv):
+        yv.append(ei(x))
+        av.append(-np.log(1.781*x))
+
+    plt.figure(fig)
+    plt.subplot(1,2,1)
+    plt.loglog(xv, yv, 'r-', label='ei', basex=10)
+    plt.loglog(xv, av, 'b-', label='log', basex=10)
+    plt.grid(which='both')
+    plt.minorticks_on()
+    plt.ylim([0.1, 10.0])
+    plt.legend()
+
+    plt.subplot(1,2,2)
+    plt.plot(xv, yv, 'r-', label='ei')
+    plt.plot(xv, av, 'b-', label='log')
+    plt.grid()
+    plt.minorticks_on()
+    # plt.ylim([0.1, 10.0])
+    plt.xlim([0,.2])
+    plt.legend()
+    plt.suptitle('Test of exponential integral')
+    plt.show()
+
+
+# STUFF suited to the hysteresis modeling
+def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0, figno=10):
+    """
+    Use the best slope to predict the fluid shot data and compare
+    :param best_slope  Whatever the best slope is
+    :param timeshift: array of timeshifts
+    :param tsname: list of possible names
+    :param usename: the name we use
+    :param tsbase: baseline timeshift
+    :return:
+    """
+
+    """
+    fluid shots:        day     offset      numberDay       Pressure
+                        8/15    1457        7               4294
+                        9/10    1483        33              4473
+                        10/18   1521        71              4921
+    """
+
+    fl = {'day': [7, 33, 71], 'P': [4.294, 4.473, 4.921]}
+    s = np.shape(timeshift)
+    for (i,name) in enumerate(tsname):
+        print name, usename
+        if name == usename:
+            print 'found: ', name
+            usetime = (timeshift[i] - timeshift[i][0]) / best_slope + pbase
+
+    x = np.arange(0, s[1])
+    plt.figure(figno)
+    plt.plot(x, usetime, 'ro-')
+    plt.plot(fl['day'], fl['P'], 'go', markersize=20)
+    plt.xlabel('day number')
+    plt.ylabel('computed pressure')
+    plt.ylim([4, 11])
+    plt.title('Fluid shots versus computed timeshift for: ' + usename + ' using slope: ' + str(1/best_slope) )
+    plt.grid()
+    plt.show()
+
+    print fl, s, usetime
+    sys.exit()
+
+def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):
     """
     Get the data for selected areal points for the hysteresis analysis
     Files must have one header line: fn_p has well designation where the pressure is measured and start date
                                      fn_ts has a label for each areal point (column) and start date
                                      no date column. assume input data is agreeing!
     :param droot: root for data files
-    :param fn_ts: filename timeshift
     :param fn_p: filename pressure
     :param alignday: puts in an extra timeshift for aligning curves at 20 days (fluid effect)
     :param correctday: corrects the fluid column effects in pressure data
     :return: pressure and timeshift vectors
     """
-    f1 = open(droot+fn_ts, 'r')
+    f1 = open(droot+'ts' + f + '.dat', 'r')
     f2 = open(droot+fn_p, 'r')
     h1 = f1.readline().split()
     h2 = f2.readline().split()
@@ -36,7 +300,6 @@ def get_hyst_data(droot, fn_ts, fn_p, alignday=75, correctday=83):
     print pname, tsname
     nwell = len(tsname)
                            #
-
 
     TSDAT = []
     for line in f1.readlines():
@@ -135,129 +398,7 @@ def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
     plt.suptitle(tit)
 
 
-
-def linesolve(lr, gp, tvec):
-    """
-    Solve the radial diffusivity equation using the method of lines
-    :return: Pressure grid in time and space
-    :param lr: radius of liquid front
-    :param gp: gas pressure at that front = boundary condirion
-    """
-    def begave(vec):
-        """
-        Get the average on the first two elements
-        :param vec:
-        :return: average
-        """
-        bave = (vec[0] + vec[1]) / 2.0
-        #bave = vec[0]
-
-        return bave
-
-    def rhs(y, t, lr, tv):
-        """
-        Defines a rhs, where lhs is simply the time derivative
-        1/r { P' + r P""}
-        Note that the arrays have no unphysical nodes
-        :param y: a single time step of the radial pressure vector
-        :param t: Current time in simulation
-        :param lr: Fluid front radius
-        :param tv: vector of times in the nstep grid(in seconds)
-        """
-        # Use this to limit rhs messages
-        index2 = int(t / fdprm.dt_fine)
-        index3 = np.searchsorted(fdprm.r, lr[index2])
-        if t > fdprm.tprev:
-            print 'rhs t', t / 3600, ' hours', index2, index3, t, tv[index2], lr[index2], fdprm.r[index3]
-            fdprm.tprev = t
-
-        nr = len(y)             # All points are physically in the model
-        y0 = y[1:nr-1]          # Chop two points at either end to form vector differences
-        rp = fdprm.rp[1:nr-1]
-        rpp = fdprm.rpp[1:nr-1]
-        r = fdprm.r                         # irregular grid
-        dr = fdprm.dr[1:nr-1]               # always regular grid version
-        ym = y[0:nr-2]
-        yp = y[2:nr]
-
-        pp_eps = (y0 - ym)/dr
-        ppp_eps = ((yp - 2.0*y0 + ym)/dr**2)
-        pp = pp_eps / rp
-        ppp = ppp_eps / rp**2 - pp_eps * rpp / rp**3
-
-        deriv = np.zeros(nr)
-        deriv[1:nr-1] = (pp + r[1:nr-1] * ppp) * prm.nu
-        deriv /= r
-        deriv[nr-1] = 0.0        # Dirichlet at boundary. There is no change to initial value
-        deriv[0] = deriv[1]      # Neuman at zero. [0] and [1] move lockstep having been set in y0
-
-        return deriv
-
-    y0 = np.ones(len(fdprm.r)) * prm.pi                         # y is on the regular grid
-    y0[0] = y0[1] + prm.qnorm * begave(fdprm.rp) / begave(fdprm.r) * begave(fdprm.dr)   # Boundary cond set at beginning. derives will preserve it.
-
-    # Loop over times
-    h0 = 0.001
-    y, output = odeint(rhs, y0, fdprm.tvals, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
-
-
-    plot_result(fdprm.r, fdprm.tvals, y, fig=10, compare=True)          # Plot results on IRREGULAR grid
-
-def plot_result(r, tvals, yp, fig=10, compare=False):
-    """
-    Plot the results and compare with ei if desired
-    :param r: radius vector
-    :param tvals: time values to compare
-    :param yp: result of fd simulation
-    :param fig: figure number
-    :param compare: True to compare with analytic
-    :return:
-    """
-    plt.figure(fig)
-    plt.subplot(1,3,1)
-    plt.title('FD Well Pressure(MPa)')
-    plt.xlabel('Radial node')
-    plt.ylabel('Time step')
-    plt.imshow(yp, aspect='auto')
-    plt.grid()
-    plt.colorbar()
-
-    ax=plt.subplot(1,3,2)
-    plt.title('FD Well Pressure')
-    plt.xlabel('Radius(m)')
-    plt.ylabel('Pressure(MPa)')
-    for (i, t) in enumerate(tvals):
-        plt.plot(r, yp[i] / 1000 / 1000, label=str(t/3600.0)+' hours')
-    plt.grid()
-    plt.legend()
-
-    if compare:                     # Plot comparison with exact solution
-        plt.subplot(1,3,3, sharex=ax, sharey=ax)
-        plt.title('Exact Well Pressure')
-        plt.xlabel('Radius(m)')
-        plt.ylabel('Pressure(MPa)')
-        for (i, t) in enumerate(tvals):
-            Pexact = []
-            for (j, rp) in enumerate(r):
-                D = 1.0 / (4.0 * prm.nu)
-                s = D * rp**2 / t
-                Pexact.append((prm.pi + prm.p0 * ei(s)) / 1000 / 1000)       # In MPa
-            plt.plot(r, Pexact, label=str(t/3600.0)+' hours')
-        plt.grid()
-        plt.legend()
-    plt.show()
-
-def ei(x):
-    """
-    exponential integral used in transient analysis
-    :param x: input arg
-    :return: ei
-    """
-
-    ei = expn(1, x)
-    return ei
-
-
+# STUFF suited to the old exact solution.
 def onewell(pi, p0, D, r, t):
     """
     Compute pressure at r from a well at origin
@@ -333,37 +474,3 @@ def onewell_xy(xv, yv, D, p0, pi, T):
         pv[i] = onewell(pi, p0, D, r, T)
 
     return pv
-
-
-
-def testei(fig=1):
-    """
-    Test the exponential integral
-    :return:
-    """
-    xv = np.arange(0.001,1.0, 0.001)
-    yv = []
-    av = []
-    for (i, x) in enumerate(xv):
-        yv.append(ei(x))
-        av.append(-np.log(1.781*x))
-
-    plt.figure(fig)
-    plt.subplot(1,2,1)
-    plt.loglog(xv, yv, 'r-', label='ei', basex=10)
-    plt.loglog(xv, av, 'b-', label='log', basex=10)
-    plt.grid(which='both')
-    plt.minorticks_on()
-    plt.ylim([0.1, 10.0])
-    plt.legend()
-
-    plt.subplot(1,2,2)
-    plt.plot(xv, yv, 'r-', label='ei')
-    plt.plot(xv, av, 'b-', label='log')
-    plt.grid()
-    plt.minorticks_on()
-    # plt.ylim([0.1, 10.0])
-    plt.xlim([0,.2])
-    plt.legend()
-    plt.suptitle('Test of exponential integral')
-    plt.show()

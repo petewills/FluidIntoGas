@@ -2,6 +2,7 @@ __author__ = 'peterwills'
 import numpy as np
 import sys as sys
 import pylab as plt
+import parm as prm
 
 def irreg_cluster(pwr=1.0, deps=1.0):
     """
@@ -10,7 +11,7 @@ def irreg_cluster(pwr=1.0, deps=1.0):
     :param deps: regular grid interval in meters
     :return: r, rreg, dr, rp, rpp
     """
-    rseg = [deps, 500.0]                        # Interval for both grids
+    rseg = [deps, 1000.0]                        # Interval for both grids
     delr = rseg[1] - rseg[0]                    # step for uniform grid
     rreg = np.arange(rseg[0], rseg[1], deps)    # The uniform grid
     nreg = len(rreg)                            # number of nodes
@@ -34,19 +35,31 @@ def irreg_cluster(pwr=1.0, deps=1.0):
 
 # Time stepping for the model
 # Time is measured in seconds.
-tmax = 3600*500                           # seconds to run simulation
-nt = 20
+tmax = 3600*24*120                           # total seconds to run simulation
+nt = 200
 dt = int(tmax / nt)                       # time step in seconds
-nstep = int(tmax / dt)                    # Number of steps to run
-tvals = np.arange(0.0, tmax, dt)
+
+# Handle the shutin option
+t_bef_shutin = prm.q_shutintime * 3600.0 * 24.0
+t_aft_shutin = tmax - t_bef_shutin
+if t_aft_shutin <= 3.0*dt or t_bef_shutin <= 3.0*dt:
+    print 'need times after and before shutin!', t_bef_shutin,  t_aft_shutin, 3.0*dt
+    sys.exit()
+tvals_bef = np.arange(0.0, t_bef_shutin, dt)
+tvals_aft = np.arange(0.0, t_aft_shutin + dt, dt)
+tvals = np.concatenate([tvals_bef, tvals_aft + t_bef_shutin])
+
+nstep = int(tmax / dt)                    # Number of steps to run before and after shutin
 tprev = 0.0
+flag = 0
 
 # We have a very fine time grid used to find liquid radius in rhs
 dt_fine = 10.0          # Fine grid for search of lr in rhs
 nstep_fine = int(tmax / dt_fine)
 
 # r, dr = reg(delr=0.1)
-r, rreg, dr, rp, rpp = irreg_cluster(pwr=1.5, deps=5.0)
+deps = 5.0
+r, rreg, dr, rp, rpp = irreg_cluster(pwr=1.5, deps=deps)
 
 plt.figure(61)
 ax = plt.subplot(1,3,1)
@@ -70,69 +83,7 @@ plt.xlabel('r(m)')
 plt.ylabel('dr')
 plt.plot(r, dr, 'ro', label='irregular')
 plt.plot(rreg, np.ones(len(r)), 'bo', label='regular')
+plt.ylim([0.0, deps+1.0])
 plt.grid()
 plt.legend()
 # plt.show()
-
-
-
-
-
-
-"""
-def irreg():
-
-    # First node is first physical point in the model
-    #
-    rseg = [0.1, 2.0, 10.0, 100.0, 1000.0]          # at nodes
-    drseg   = [0.5, 1.0,  10.0,   100.0,   1000.0]  # also at nodes
-    nseg = 10                                       # single segment n - applies to all segments
-                                      # single segment n - applies to all segments
-    Nseg = len(rseg) - 1                            # Number of segments
-    r, dr = np.zeros(Nseg*(nseg-1)), np.zeros(Nseg*(nseg-1))
-    for i in range(Nseg):
-        lr, ur = rseg[i], rseg[i+1]
-        ldr, udr = drseg[i], drseg[i+1]
-        temp, tempr = [], []
-        for j in range(nseg-1):
-            lamb = (float(j) / float(nseg-2)) **1.6        # 0 to 1
-            temp.append((1.0-lamb) * ldr + lamb * udr)
-        norm = np.sum(temp)
-        tot = lr
-        tempr = [lr]
-        for j in range(nseg-1):
-            temp[j] *= (ur - lr) / norm
-        for j in range(nseg-1):
-            tot += temp[j]
-            tempr.append(tot)
-        r[(nseg-1)*i:(nseg-1)*(i+1)] = tempr[:nseg-1]
-    for j in range(len(dr)-1):
-        dr[j] = r[j+1] - r[j]
-    dr[-1] = dr[-2]
-
-    return r, dr
-"""
-"""
-def irreg1(expand=1.0, delr=0.1):
-    ""
-    create a regular grid
-    :param expand: how much to expand the grid for larger r. 1.0 is regular
-    :param delr: starting interval
-    :return: r, dr
-    ""
-    rseg = [0.1, 500.0]         # Interval for grid
-    rp = rseg[0]
-    sz, N = delr, 0
-    r, dr = np.zeros(100000), np.zeros(100000)
-    while rp < rseg[1]:
-        r[N] = rp
-        dr[N] = sz
-        rp = rp + sz
-        sz *= expand
-        N += 1
-
-    r = r[:N-1]
-    dr = dr[:N-1]
-
-    return r, dr
-        """
