@@ -4,7 +4,7 @@ import sys as sys
 import pylab as plt
 import parm as prm
 
-def irreg_cluster(pwr=1.0, deps=1.0):
+def irreg_cluster(pwr=1.5, deps=1.0):
     """
     create an irregular grid based on power law map function. Using pwr=1 will give you a regular grid.
     :param pwr: how much to expand the grid for larger r. 1.0 is regular
@@ -36,17 +36,29 @@ def irreg_cluster(pwr=1.0, deps=1.0):
 # Time stepping for the model
 # Time is measured in seconds.
 tmax = 3600*24*120                           # total seconds to run simulation
-nt = 200
+nt = 50
 dt = int(tmax / nt)                       # time step in seconds
 
+# Relaxation constant to honour gas pressure outside the liquid sphere
+# This constant will multiply the pressure difference in derivs, measured im MPa.
+# Should be small as possible whilst maintaining pressure outside liquid(which is plotted)
+alpha = 0.0001
+
 # Handle the shutin option
-t_bef_shutin = prm.q_shutintime * 3600.0 * 24.0
+q_shutintime = 80.0                                               # shutin time in days. Make sure its not too big or else gas vanishes
+t_init = 3600*24*4; dt_init = 20000
+t_bef_shutin = q_shutintime * 3600.0 * 24.0
 t_aft_shutin = tmax - t_bef_shutin
 if t_aft_shutin <= 3.0*dt or t_bef_shutin <= 3.0*dt:
     print 'need times after and before shutin!', t_bef_shutin,  t_aft_shutin, 3.0*dt
     sys.exit()
-tvals_bef = np.arange(0.0, t_bef_shutin, dt)
-tvals_aft = np.arange(0.0, t_aft_shutin + dt, dt)
+shutin_extra_radius = 5.0          # Add this to the liquid radius to get the gas boundary point. Prevents impossible pressureup.
+
+tvals_init = np.arange(dt_init, t_init, dt_init)          # Needed fine at start due to strong gas pressure curvature
+tvals_bef = np.arange(t_init, t_bef_shutin, dt)
+tvals_bef = np.concatenate([tvals_init, tvals_bef])
+
+tvals_aft = np.arange(0.01, t_aft_shutin + dt, dt)
 tvals = np.concatenate([tvals_bef, tvals_aft + t_bef_shutin])
 
 nstep = int(tmax / dt)                    # Number of steps to run before and after shutin

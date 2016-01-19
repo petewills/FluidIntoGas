@@ -29,7 +29,7 @@ def linesolve(lr, gp, tvec, fr):
 
         return bave
 
-    def rhs(y, t, lr, tv):
+    def rhs(y, t, lr, tv, gp, tbeg_real):
         """
         Defines a rhs, where lhs is simply the time derivative
         1/r { P' + r P""}
@@ -38,12 +38,16 @@ def linesolve(lr, gp, tvec, fr):
         :param t: Current time in simulation
         :param lr: Fluid front radius
         :param tv: vector of times in the nstep grid(in seconds)
+        :param gp: Gas pressure for the boundary condition
+        :param tbeg_real: in second odeint, t  starts at zero. Real t starts at tbeg_real
         """
+
+        treal = tbeg_real + t
         # Use this to limit rhs messages
-        index2 = int(t / fdprm.dt_fine)
-        index3 = np.searchsorted(fdprm.r, lr[index2])
+        index2 = int(treal / fdprm.dt_fine)
+        index_r = np.searchsorted(fdprm.r, lr[index2] + fdprm.shutin_extra_radius)
         if (t - fdprm.tprev) > fdprm.tmax/10:
-            print 'rhs t', t / 3600, ' hours', 'fluid radius: ', lr[index2], ' searched radius: ', fdprm.r[index3]
+            print 'rhs t', treal / 3600 /24, index2, index_r,  ' hours', 'fluid radius: ', lr[index2]+fdprm.shutin_extra_radius, ' searched radius: ', fdprm.r[index_r], 'Gas P: ', gp[index2]
             fdprm.tprev = t
 
         nr = len(y)             # All points are physically in the model
@@ -61,32 +65,45 @@ def linesolve(lr, gp, tvec, fr):
         ppp = ppp_eps / rp**2 - pp_eps * rpp / rp**3
 
         deriv = np.zeros(nr)
-        deriv[1:nr-1] = (pp + r[1:nr-1] * ppp) * prm.nu
+        deriv[1:nr-1] = (pp + r[1:nr-1] * ppp) *  prm.k / (prm.phi * prm.mu * prm.cr)
         deriv /= r
         deriv[nr-1] = 0.0        # Dirichlet at boundary. There is no change to initial value
         deriv[0] = deriv[1]      # Neuman at zero. [0] and [1] move lockstep having been set in y0
+
+        # Enforce the lack of change at the liquid radius. Make sure that it does not grow after shutin.
+        if treal > fdprm.q_shutintime * 3600 * 24:
+            index2 = int(fdprm.q_shutintime * 3600.0 * 24.0 / fdprm.dt_fine)
+            index_r = np.searchsorted(fdprm.r, lr[index2] + fdprm.shutin_extra_radius)
+            # print 'hit limit', treal/3600/24, fdprm.q_shutintime, '    hours'
+
+        # Handle the boundary condition at large radius, where pressure has to match the gas pressure
+        deriv[index_r:] = -fdprm.alpha * (y[index_r:] - 1000*1000*gp[index2])
+        deriv[-1] = 0.0
+
 
         return deriv
 
     y0 = np.ones(len(fdprm.r)) * prm.pi                         # y is on the regular grid
     y0[0] = y0[1] + prm.qnorm * begave(fdprm.rp) / begave(fdprm.r) * begave(fdprm.dr)   # Boundary cond set at beginning. derives will preserve it.
 
+
     # Loop over times. ODEINT is run twice as we have a shutin period at the end
     h0 = 0.001
-    y_bef, output = odeint(rhs, y0, fdprm.tvals_bef, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
+    y_bef, output = odeint(rhs, y0, fdprm.tvals_bef, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, 0.0,))
     print 'Done first ODEINT', np.shape(y_bef), len(fdprm.tvals_bef)
 
     y0 = y_bef[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
     y0[1] = y0[0]
 
     fdprm.prev = 0.0
-    y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec,))
+    tbeg_real = fdprm.tvals_bef[-1]
+    y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, tbeg_real))
     print 'Done second ODEINT', np.shape(y_aft), len(fdprm.tvals_aft)
 
     y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
     plot_result(fdprm.r, fdprm.tvals, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
     plot_result_points(fdprm.r, fdprm.tvals, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
-    plt.show()
+    return y_all
 
 def plot_result_points(r, tvals, yp, fig=10, compare=False, plot_r=[100.0]):
     """
@@ -111,7 +128,7 @@ def plot_result_points(r, tvals, yp, fig=10, compare=False, plot_r=[100.0]):
             y[i] = yp[i, index3]
         plt.plot(tvals/3600.0/24.0, y / 1000 / 1000, 'o-', label=str(pr)+' meters')
     plt.grid()
-    legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+    legend = plt.legend(bbox_to_anchor=(1.1, 1.0))
     for label in legend.get_texts():
         label.set_fontsize('x-small')
 
@@ -123,19 +140,21 @@ def plot_result_points(r, tvals, yp, fig=10, compare=False, plot_r=[100.0]):
         for pr in plot_r:
             Pexact, x = [], []
             for (i, t) in enumerate(tvals):
-                t_zerorate = t - prm.q_shutintime* 3600.0 * 24.0
+                t_zerorate = t - fdprm.q_shutintime* 3600.0 * 24.0
                 s = prm.D * pr**2 / t
                 s_zr = prm.D * pr**2 / t_zerorate
                 x.append(t / 3600.0 / 24.0)
-                if (t <= prm.q_shutintime * 3600.0 * 24.0):
+                if (t <= fdprm.q_shutintime * 3600.0 * 24.0):
                     Pexact.append((prm.pi + prm.p0 * ei(s))/1000.0/1000.0)
                 else:
                     Pexact.append((prm.pi + prm.p0 * ei(s) - prm.p0 * ei(s_zr)) / 1000 / 1000)       # In MPa
             plt.plot(x, Pexact, label=str(pr)+' meters')
         plt.grid()
-        legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
+        legend = plt.legend(bbox_to_anchor=(1.1, 1.0))
         for label in legend.get_texts():
             label.set_fontsize('x-small')
+    tit = make_title( {'cr': prm.cr, 'ex_radius': fdprm.shutin_extra_radius, 'h': prm.h})
+    plt.suptitle(tit)
 
 def plot_result(r, tvals, yp, fig=10, compare=False):
     """
@@ -161,7 +180,7 @@ def plot_result(r, tvals, yp, fig=10, compare=False):
     plt.xlabel('Radius(m)')
     plt.ylabel('Pressure(MPa)')
     for (i, t) in enumerate(tvals):
-        plt.plot(r, yp[i] / 1000 / 1000, label=str(t/3600.0)+' hours')
+        plt.plot(r, yp[i] / 1000 / 1000, label=str(round(t/3600/24, ndigits=4)) +' days')
     plt.grid()
     legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
     for label in legend.get_texts():
@@ -175,20 +194,35 @@ def plot_result(r, tvals, yp, fig=10, compare=False):
         plt.ylabel('Pressure(MPa)')
         for (i, t) in enumerate(tvals):
             Pexact = []
-            t_zerorate = t - prm.q_shutintime* 3600.0 * 24.0
-            # t_zerorate = min(t, prm.q_shutintime * 3600.0 * 24.0)           # Transition from full rate to zero
+            t_zerorate = t - fdprm.q_shutintime* 3600.0 * 24.0
             for (j, rp) in enumerate(r):
                 s = prm.D * rp**2 / t
                 s_zr = prm.D * rp**2 / t_zerorate
-                if (t <= prm.q_shutintime * 3600.0 * 24.0):
+                #print 'times: ', t/(3600.0 * 24.0), fdprm.q_shutintime, s, s_zr
+                if (t <= fdprm.q_shutintime * 3600.0 * 24.0):
                     Pexact.append((prm.pi + prm.p0 * ei(s))/1000.0/1000.0)
                 else:
                     Pexact.append((prm.pi + prm.p0 * ei(s) - prm.p0 * ei(s_zr)) / 1000 / 1000)       # In MPa
-            plt.plot(r, Pexact, label=str(t/3600.0)+' hours')
+            plt.plot(r, Pexact, label=str(round(t/3600/24, ndigits=4))+' days')
         plt.grid()
         legend = plt.legend(bbox_to_anchor=(1.1, 1.1))
         for label in legend.get_texts():
             label.set_fontsize('x-small')
+    tit = make_title( {'cr': prm.cr, 'ex_radius': fdprm.shutin_extra_radius, 'h': prm.h})
+    plt.suptitle(tit)
+
+def make_title(titdict):
+    """
+    Make a super title from the input dictionary
+    :param titdict:{label, value} entries
+    :return: string title
+    """
+
+    label = 'Parameters:  '
+    for k, v in titdict.iteritems():
+        label += '  ' + k + '=' + str((v)) + ';'
+    return label
+
 
 def ei(x):
     """
@@ -196,6 +230,8 @@ def ei(x):
     :param x: input arg
     :return: ei
     """
+    # if x > 1000.0 or x < 1.0/1000.0:
+    #     print 'anomalous x in ei', x, expn(1, x)
 
     ei = expn(1, x)
     return ei
@@ -216,26 +252,30 @@ def testei(fig=1):
     plt.figure(fig)
     plt.subplot(1,2,1)
     plt.loglog(xv, yv, 'r-', label='ei', basex=10)
-    plt.loglog(xv, av, 'b-', label='log', basex=10)
+    plt.loglog(xv, av, 'b-', label='log approximation', basex=10)
     plt.grid(which='both')
     plt.minorticks_on()
     plt.ylim([0.1, 10.0])
+    plt.xlabel('s')
+    plt.title('log-log plot')
     plt.legend()
 
     plt.subplot(1,2,2)
     plt.plot(xv, yv, 'r-', label='ei')
-    plt.plot(xv, av, 'b-', label='log')
+    plt.plot(xv, av, 'b-', label='log approximation')
     plt.grid()
     plt.minorticks_on()
     # plt.ylim([0.1, 10.0])
     plt.xlim([0,.2])
     plt.legend()
+    plt.xlabel('s')
+    plt.title('linear plot')
     plt.suptitle('Test of exponential integral')
     plt.show()
 
-
+# =====================================================================================================================
 # STUFF suited to the hysteresis modeling
-def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0, figno=10):
+def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0, figno=10, dataplot='on'):
     """
     Use the best slope to predict the fluid shot data and compare
     :param best_slope  Whatever the best slope is
@@ -243,6 +283,7 @@ def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0
     :param tsname: list of possible names
     :param usename: the name we use
     :param tsbase: baseline timeshift
+    dataplot: plot actual fluid shots or not. If not, we still get pressure conversion
     :return:
     """
 
@@ -256,15 +297,14 @@ def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0
     fl = {'day': [7, 33, 71], 'P': [4.294, 4.473, 4.921]}
     s = np.shape(timeshift)
     for (i,name) in enumerate(tsname):
-        print name, usename
         if name == usename:
-            print 'found: ', name
             usetime = (timeshift[i] - timeshift[i][0]) / best_slope + pbase
 
     x = np.arange(0, s[1])
     plt.figure(figno)
     plt.plot(x, usetime, 'ro-')
-    plt.plot(fl['day'], fl['P'], 'go', markersize=20)
+    if dataplot=='on':
+        plt.plot(fl['day'], fl['P'], 'go', markersize=20)
     plt.xlabel('day number')
     plt.ylabel('computed pressure')
     plt.ylim([4, 11])
@@ -272,7 +312,6 @@ def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0
     plt.grid()
     plt.show()
 
-    print fl, s, usetime
     sys.exit()
 
 def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):

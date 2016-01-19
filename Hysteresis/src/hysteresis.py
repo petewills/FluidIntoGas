@@ -14,9 +14,9 @@ import library as lib
 
 alignday=65             # Align the curves here - at maximum...
 correctday = 83         # Correct for the "gas" in well - the pressure drop day
-# q, pdat, tsname = lib.get_hyst_data(DATAROOT, "ts.dat", "p.dat", alignday=alignday, correctday=correctday, f='_6')
 #q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", alignday=alignday, correctday=correctday, f='_p4')
-q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", alignday=alignday, correctday=correctday, f='_w6')
+q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", alignday=alignday, correctday=correctday, f='_3108_lateral')
+# q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", alignday=alignday, correctday=correctday, f='_w6')
 nwell = len(q)
 
 
@@ -30,9 +30,11 @@ ts_T_slope =  1.0 / 80.00        # ms / deg C. Positive T is negative.
 s_t_slope = str(1/ts_T_slope)[:4]+ ' deg C/ms'
 s_p_slope = str(1/ts_p_slope)[:4]  + ' MPa/ms'
 
+print tsname
 # Plot fluid shots
-lib.predict_shots(ts_p_slope, q, tsname, 'well6', tsbase=-0.2, pbase=4.3, figno=10)
-# lib.predict_shots(ts_p_slope, q, tsname, 'P4small', tsbase=-0.2, pbase=4.5, figno=10)
+lib.predict_shots(ts_p_slope, q, tsname, '08_lateral', tsbase=0.0, pbase=7.1, figno=10, dataplot='off')
+# lib.predict_shots(ts_p_slope, q, tsname, 'well6', tsbase=-0.2, pbase=4.3, figno=10, dataplot='on')
+
 
 # Make the model
 T, P, TS, d = [], [], [], []
