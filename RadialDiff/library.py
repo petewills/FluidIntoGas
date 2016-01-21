@@ -8,6 +8,7 @@ import parm as prm
 from scipy.integrate import ode as ode
 from scipy.integrate import odeint as odeint
 import sys as sys
+import os as os
 import math as math
 
 
@@ -273,6 +274,18 @@ def testei(fig=1):
     plt.suptitle('Test of exponential integral')
     plt.show()
 
+def get_press_pred(timeshift, best_slope, pbase):
+    """
+    Get a pressure prediction from timeshift using our slope model
+    :param timeshift: a vector of timeshifts
+    :param best_slope: slope in MPa/ms
+    :param pbase: Where the pressure is at the beginning
+    :return: pressure prediction
+    """
+
+    usetime = timeshift / best_slope + pbase
+
+    return usetime
 # =====================================================================================================================
 # STUFF suited to the hysteresis modeling
 def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0, figno=10, dataplot='on'):
@@ -296,9 +309,9 @@ def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0
 
     fl = {'day': [7, 33, 71], 'P': [4.294, 4.473, 4.921]}
     s = np.shape(timeshift)
-    for (i,name) in enumerate(tsname):
+    for (i, name) in enumerate(tsname):
         if name == usename:
-            usetime = (timeshift[i] - timeshift[i][0]) / best_slope + pbase
+            usetime = get_press_pred(timeshift[i] - timeshift[i][0], best_slope, pbase)
 
     x = np.arange(0, s[1])
     plt.figure(figno)
@@ -314,7 +327,7 @@ def predict_shots(best_slope, timeshift, tsname, usename, tsbase=-0.2, pbase=4.0
 
     sys.exit()
 
-def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):
+def get_hyst_data(droot, fn_p, slope = 1/5.3,  alignday=75, correctday=83, f=''):
     """
     Get the data for selected areal points for the hysteresis analysis
     Files must have one header line: fn_p has well designation where the pressure is measured and start date
@@ -326,6 +339,7 @@ def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):
     :param correctday: corrects the fluid column effects in pressure data
     :return: pressure and timeshift vectors
     """
+
     f1 = open(droot+'ts' + f + '.dat', 'r')
     f2 = open(droot+fn_p, 'r')
     h1 = f1.readline().split()
@@ -339,7 +353,6 @@ def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):
     print pname, tsname
     nwell = len(tsname)
                            #
-
     TSDAT = []
     for line in f1.readlines():
         a0 = line.split()
@@ -352,24 +365,27 @@ def get_hyst_data(droot, fn_p, alignday=75, correctday=83, f=''):
     for line in f2.readlines():
         PDAT.append(float(line))
 
-    if len(PDAT) != len(TSDAT):
-        print 'Different data file sizes: ', len(PDAT), len(TSDAT)
-        sys.exit()
+    # if len(PDAT) != len(TSDAT):
+    #     print 'Different data file sizes for pressure and timeshift: ', f, len(PDAT), len(TSDAT)
+    #     sys.exit()
 
-    nday = len(PDAT)
+
+    nday = len(TSDAT)
+    a = np.array(TSDAT)
     q = []
+    # align and correct the data
     for i in range(nwell):
         q.append(np.transpose(TSDAT)[i])
         q[i] -= q[i][alignday]
     for i in range(nday):
-        if i >= correctday:
+        if i >= correctday and i < len(PDAT):
             PDAT[i] = PDAT[i] + 0.7
 
-    plot_data(q, PDAT, tsname, fig=0)          # Consolidated plot of the data
+    plot_data(q, PDAT, tsname, alignday, slope, fig=0)          # Consolidated plot of the data
 
     return q, PDAT, tsname
 
-def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
+def plot_data( qD, PDATD, tsnameD, alignday, slope, fig=0, tit=''):
     """
     Simple consolidated plot of the hysteresis data
     :param qD: timeshift lists
@@ -379,25 +395,26 @@ def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
     """
     nwell = len(qD)
     nday = len(qD[0])
+    npress = len(PDATD)
     nqD = np.zeros([nwell, nday])
     for i in range(nwell):
         for j in range(nday):
             nqD[i,j] = -qD[i][j]
 
-    nyp = 2
-    nxp = 3        # Two rows. Upper is basic plots and lower is the indiv well crossplota
+    nyp = 3
+    nxp = 3        # Three rows. Upper is basic plots and lower is the indiv well crossplots Last is verification
     # Individual attributes
     plt.figure(fig+1, figsize=(15,10))
-    ax = plt.subplot(2,3,1)
-    d = np.arange(1, len(PDATD)+1)
-    plt.scatter(d, PDATD, s=30, c=d, edgecolors='none')
+    ax = plt.subplot(3,3,1)
+    d = np.arange(1, nday + 1)
+    plt.scatter(d[:npress], PDATD, s=30, c=d[:npress], edgecolors='none')
     plt.ylim([0, 12])
     plt.xlabel('day')
     plt.ylabel('Pressure(MPa)')
     plt.title('Pressure')
     plt.grid()
 
-    plt.subplot(2, 3, 2, sharex=ax)
+    plt.subplot(3, 3, 2, sharex=ax)
     for i in range(nwell):
         plt.plot( d, qD[i], 'o-', label=tsnameD[i])
     plt.xlabel('day')
@@ -405,28 +422,33 @@ def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
     plt.title('Timeshifts')
     plt.ylim([-1.0, 0.6])
     plt.xlim([0, 160])
-    plt.legend()
+    lg=plt.legend()
+    for label in lg.get_texts():
+        label.set_fontsize('x-small')
     plt.grid()
 
+
     # Crossplots
-    ax1 = plt.subplot(2, 3, 3)
+    ax1 = plt.subplot(3, 3, 3)
     for i in range(nwell):
-        plt.plot(nqD[i], PDATD, 'o-', label=tsnameD[i], markersize=5)
+        plt.plot(nqD[i][:npress], PDATD, 'o-', label=tsnameD[i], markersize=5)
     plt.ylabel('Pressure(MPa)')
     plt.xlabel('Timeshift(ms)')
     plt.title("Crossplot")
     plt.xlim([ -0.6, 1.2])
     plt.ylim([0, 12])
-    plt.legend()
+    lg=plt.legend()
+    for label in lg.get_texts():
+        label.set_fontsize('x-small')
     plt.grid()
 
-    plt.subplot(2, 3, 4, sharex=ax1, sharey=ax1)
+    plt.subplot(3, 3, 4, sharex=ax1, sharey=ax1)
     ax2 = []
     for i in range(nwell):
         if i > 0:
-            ax2.append(plt.subplot( 2, 3, 4 + i, sharex=ax1, sharey=ax1))
-        plt.scatter( nqD[i], PDATD, s=30, c=d)# , edgecolors='none')
-        plt.annotate(tsnameD[i], xy=(0.5, 0.8), xycoords='axes fraction', fontsize=20)
+            ax2.append(plt.subplot( 3, 3, 4 + i, sharex=ax1, sharey=ax1))
+        plt.scatter( nqD[i][:npress], PDATD, s=30, c=d[:npress])# , edgecolors='none')
+        plt.annotate(tsnameD[i], xy=(0.5, 0.1), xycoords='axes fraction', fontsize=16)
         plt.ylabel('Pressure(MPa)')
         plt.xlabel('Timeshift(ms)')
         plt.title("Crossplot")
@@ -434,8 +456,40 @@ def plot_data( qD, PDATD, tsnameD, fig=0, tit=''):
         plt.ylim([0, 12])
         plt.grid()
 
-    plt.suptitle(tit)
+    plt.subplot(3, 3, 7, sharex=ax, sharey=ax)
+    ax3 = []
+    for i in range(nwell):
+        if i > 0:
+            ax3.append(plt.subplot( 3, 3, 7 + i, sharex=ax, sharey=ax))
+       #  plt.scatter(d, PDATD, s=30, c=d, edgecolors='none', label='3108 pressure')
+        Pdata = get_press_pred(qD[i] - qD[i][0], slope, 4.0)
+        Pdata = Pdata + PDATD[alignday] - Pdata[alignday]
+        plt.plot(d, Pdata, 'ro-', label='ts predict: ' + tsnameD[i])
+        plt.plot(d[:npress], PDATD, 'bo-', label='3108 pressure')
+        plt.ylabel('Pressure(MPa)')
+        plt.xlabel('day number')
+        plt.title("Validate model")
+        plt.ylim([0, 12])
+        lg=plt.legend()
+        for label in lg.get_texts():
+            label.set_fontsize('x-small')
+        plt.grid()
 
+    plt.suptitle(tit)
+    plt.show()
+
+    # output the predicted pressure data to a file
+    for i in range(nwell):
+        fname = '../pressPred_' + tsnameD[i] + '.dat'
+        f = open(fname, 'w')
+        f.write('day      timeshift    predictedPressure\n')
+        Pdata = get_press_pred(qD[i] - qD[i][0], slope, 4.0)
+        Pdata += PDATD[alignday] - Pdata[alignday]
+        for j in range(nday):
+            f.write("%f %f %f\n" % (j, qD[i][j], Pdata[j]))
+        f.close()
+        os.system('ls')
+        os.system('pwd')
 
 # STUFF suited to the old exact solution.
 def onewell(pi, p0, D, r, t):

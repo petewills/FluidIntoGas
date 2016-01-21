@@ -32,19 +32,62 @@ def irreg_cluster(pwr=1.5, deps=1.0):
 
     return r, rreg, dr, rp, rpp
 
+def getflow(nday, figno=50):
+    """
+    Get the daily description of flow to restart the odeints
+    :param nday: number of days in simulation
+    :param figno: figure for plots
+    :return:
+    """
+    qvar = [ 0.0, 300.0, 500.0, 250.0, 0.0]                 # flow rates throughout the simulation
+    tvar = [ 0,      2,    70,    75,  85]                 # Times where the flow rates were initiated
+    nvar = len(tvar)
+
+    if len(qvar) != len(tvar):
+        print 'Error: qvar and tvar need to be same length'
+        sys.exit()
+    if tvar[-1] > nday:
+        print 'Error: last flow time bigger than nday'
+        sys.exit()
+
+    # create a reasonable plot realization
+    x, y = [], []
+    day = 0
+    for i in range(nvar-1):
+        flow = qvar[i]
+        for j in range(tvar[i], tvar[i+1]):
+            x.append(day)
+            y.append(flow)
+            day += 1
+    x.append(day)
+    y.append(qvar[-1])
+
+    # Plot the flow
+    plt.figure(figno)
+    plt.plot(tvar, qvar, 'ro')
+    plt.plot(x, y, 'k-')
+    plt.title('Flow into well')
+    plt.xlabel('day')
+    plt.ylabel('flow(m3/day')
+    plt.ylim([0, 1000])
+    plt.grid()
+    plt.show()
 
 # Time stepping for the model
 # Time is measured in seconds.
-tmax = 3600*24*120                           # total seconds to run simulation
-nt = 50
+nday = 120
+tmax = 3600*24*nday                           # total seconds to run simulation
+nt = 90
 dt = int(tmax / nt)                       # time step in seconds
+
+getflow(nday, figno=50)
 
 # Relaxation constant to honour gas pressure outside the liquid sphere
 # This constant will multiply the pressure difference in derivs, measured im MPa.
 # Should be small as possible whilst maintaining pressure outside liquid(which is plotted)
 alpha = 0.0001
 
-# Handle the shutin option
+# Handle the variable flow option
 q_shutintime = 80.0                                               # shutin time in days. Make sure its not too big or else gas vanishes
 t_init = 3600*24*4; dt_init = 20000
 t_bef_shutin = q_shutintime * 3600.0 * 24.0
