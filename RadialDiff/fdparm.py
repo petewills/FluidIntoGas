@@ -32,16 +32,27 @@ def irreg_cluster(pwr=1.5, deps=1.0):
 
     return r, rreg, dr, rp, rpp
 
-def getflow(nday, figno=50):
+def getflow(nday, q_shutintime, figno=50):
     """
     Get the daily description of flow to restart the odeints
     :param nday: number of days in simulation
     :param figno: figure for plots
     :return:
     """
-    qvar = [ 0.0, 300.0, 500.0, 250.0, 0.0]                 # flow rates throughout the simulation
-    tvar = [ 0,      2,    70,    75,  85]                 # Times where the flow rates were initiated
+
+    # These arrays will be used to control the odeint's
+    qvar =      [ 0.0, 300.0, 500.0, 250.0, 0.0]                # flow rates throughout the simulation
+    tvar =      [ 0,      2,    70,    75,  85]                 # Times where the flow rates were initiated
+    dtvar =     [    0.2,   1.0,   1.0,  1.0]                   # step interval for getting pressures, in days. Oversample startup
+    ind_shut =  2                                               # we shutin at index 2. modifies boundary condition
     nvar = len(tvar)
+    times_ode, q_ode = [], []
+    for i in range(len(dtvar)):
+        times_ode.append(np.arange( tvar[i], tvar[i+1], dtvar[i]))
+        q_ode.append(np.ones(len(times_ode[i])) * qvar[i])
+
+    print times_ode
+
 
     if len(qvar) != len(tvar):
         print 'Error: qvar and tvar need to be same length'
@@ -62,10 +73,13 @@ def getflow(nday, figno=50):
     x.append(day)
     y.append(qvar[-1])
 
+
     # Plot the flow
     plt.figure(figno)
     plt.plot(tvar, qvar, 'ro')
     plt.plot(x, y, 'k-')
+    for i in range(len(dtvar)):
+        plt.plot(times_ode[i], q_ode[i], 'ko-', markersize=3)
     plt.title('Flow into well')
     plt.xlabel('day')
     plt.ylabel('flow(m3/day')
@@ -73,14 +87,15 @@ def getflow(nday, figno=50):
     plt.grid()
     plt.show()
 
+    return times_ode, qvar, ind_shut
+
 # Time stepping for the model
 # Time is measured in seconds.
 nday = 120
-tmax = 3600*24*nday                           # total seconds to run simulation
-nt = 90
-dt = int(tmax / nt)                       # time step in seconds
+tmax = 3600*24*nday                             # total seconds to run simulation
+nt = 40
+dt = int(tmax / nt)                             # time step in seconds
 
-getflow(nday, figno=50)
 
 # Relaxation constant to honour gas pressure outside the liquid sphere
 # This constant will multiply the pressure difference in derivs, measured im MPa.
@@ -88,10 +103,12 @@ getflow(nday, figno=50)
 alpha = 0.0001
 
 # Handle the variable flow option
-q_shutintime = 80.0                                               # shutin time in days. Make sure its not too big or else gas vanishes
+q_shutintime = 80.0                                                 # shutin time in days. Make sure its not too big or else gas vanishes
+times_ode, qvar, ind_shut = getflow(nday, q_shutintime, figno=50)   # Specifies the odeint runs
+n_ode = len(times_ode) - 1
 t_init = 3600*24*4; dt_init = 20000
-t_bef_shutin = q_shutintime * 3600.0 * 24.0
-t_aft_shutin = tmax - t_bef_shutin
+t_bef_shutin = q_shutintime * 3600.0 * 24.0                         # shutintime in seconds.
+t_aft_shutin = tmax - t_bef_shutin                                  # amount of time from shutin to the end
 if t_aft_shutin <= 3.0*dt or t_bef_shutin <= 3.0*dt:
     print 'need times after and before shutin!', t_bef_shutin,  t_aft_shutin, 3.0*dt
     sys.exit()
@@ -101,7 +118,7 @@ tvals_init = np.arange(dt_init, t_init, dt_init)          # Needed fine at start
 tvals_bef = np.arange(t_init, t_bef_shutin, dt)
 tvals_bef = np.concatenate([tvals_init, tvals_bef])
 
-tvals_aft = np.arange(0.01, t_aft_shutin + dt, dt)
+tvals_aft = np.arange(0.01, t_aft_shutin - dt, dt)         # We leave a small unsimulated time at the end to prevent array problems
 tvals = np.concatenate([tvals_bef, tvals_aft + t_bef_shutin])
 
 nstep = int(tmax / dt)                    # Number of steps to run before and after shutin
@@ -131,7 +148,6 @@ plt.ylabel('rpp')
 plt.plot(r, rpp, 'ro')
 plt.grid()
 
-
 plt.subplot(1,3,3, sharex=ax)
 plt.title("Irregular Grid vs Regular grid")
 plt.xlabel('r(m)')
@@ -141,4 +157,4 @@ plt.plot(rreg, np.ones(len(r)), 'bo', label='regular')
 plt.ylim([0.0, deps+1.0])
 plt.grid()
 plt.legend()
-# plt.show()
+

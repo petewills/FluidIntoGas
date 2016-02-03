@@ -25,7 +25,8 @@ ts_T_slope =  1.0 / 8000.00        # ms / deg C. Positive T is negative.
 # q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_3108_lateral')
 # q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_w8')
 # q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_w8_str')
-q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_w6')
+# q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_w6')
+q, pdat, tsname = lib.get_hyst_data(DATAROOT, "p.dat", slope = ts_p_slope, alignday=alignday, correctday=correctday, f='_xs_w8')
 nwell = len(q)
 
 
@@ -85,7 +86,8 @@ plt.show()
 # plt.ylabel('Timeshift(ms)')
 # plt.title('Timeshift')
 # plt.grid()
-#
+#top
+
 #
 # # Crossplots
 # plt.figure(2)

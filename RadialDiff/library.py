@@ -46,6 +46,9 @@ def linesolve(lr, gp, tvec, fr):
         treal = tbeg_real + t
         # Use this to limit rhs messages
         index2 = int(treal / fdprm.dt_fine)
+        if index2 > len(lr):
+            print 'Error: time out of lr bounds', treal/3600/24, index2
+            sys.exit()
         index_r = np.searchsorted(fdprm.r, lr[index2] + fdprm.shutin_extra_radius)
         if (t - fdprm.tprev) > fdprm.tmax/10:
             print 'rhs t', treal / 3600 /24, index2, index_r,  ' hours', 'fluid radius: ', lr[index2]+fdprm.shutin_extra_radius, ' searched radius: ', fdprm.r[index_r], 'Gas P: ', gp[index2]
@@ -84,9 +87,48 @@ def linesolve(lr, gp, tvec, fr):
 
         return deriv
 
+    y0 = np.ones(len(fdprm.r)) * prm.pi                                                 # y is on the regular grid
+    y0[0] = y0[1] + prm.qnorm * begave(fdprm.rp) / begave(fdprm.r) * begave(fdprm.dr)   # r=0 Boundary cond set at beginning. rhs will preserve it.
+
+    # Loop over separate odeints. Note that one is shutin (ind_shutin)
+    h0 = 0.001
+    y = []
+    print 'shut index:', fdprm.ind_shut
+    for i in range(fdprm.ind_shut):
+        print 'times: ', fdprm.times_ode[i]
+        if i > 0:
+            times = fdprm.times_ode[i] - fdprm.times_ode[i-1][-1]
+        else:
+            times = fdprm.times_ode[0]
+        print 'initial: ',  y0/1000000
+        y_tmp, output = odeint(rhs, y0, times, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, 0.0,))
+        y0 = y_tmp[-1]                          # Next is initialized with last step in this.
+        print 'final: ',  y0/1000000, np.shape(y_tmp)
+        y.append(y_tmp)
+    print 'Done  ODEINT up to shutin'
+
+    # some kind of problem getting pressure diffusion to higher radii.
+    sys.exit()
+
+    y0 = y_tmp[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
+    y0[1] = y0[0]
+
+    fdprm.prev = 0.0
+    tbeg_real = fdprm.tvals_bef[-1]
+    y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, tbeg_real))
+    print 'Done second ODEINT', np.shape(y_aft)
+
+    y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
+    plot_result(fdprm.r, fdprm.tvals, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
+    plot_result_points(fdprm.r, fdprm.tvals, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
+    return y_all
+
+"""
     y0 = np.ones(len(fdprm.r)) * prm.pi                         # y is on the regular grid
     y0[0] = y0[1] + prm.qnorm * begave(fdprm.rp) / begave(fdprm.r) * begave(fdprm.dr)   # Boundary cond set at beginning. derives will preserve it.
 
+
+    # Loop over times characterizing the variable injection flow.
 
     # Loop over times. ODEINT is run twice as we have a shutin period at the end
     h0 = 0.001
@@ -99,12 +141,13 @@ def linesolve(lr, gp, tvec, fr):
     fdprm.prev = 0.0
     tbeg_real = fdprm.tvals_bef[-1]
     y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, tbeg_real))
-    print 'Done second ODEINT', np.shape(y_aft), len(fdprm.tvals_aft)
+    print 'Done second ODEINT', np.shape(y_aft)
 
     y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
     plot_result(fdprm.r, fdprm.tvals, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
     plot_result_points(fdprm.r, fdprm.tvals, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
     return y_all
+    """
 
 def plot_result_points(r, tvals, yp, fig=10, compare=False, plot_r=[100.0]):
     """
