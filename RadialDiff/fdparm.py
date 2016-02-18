@@ -40,19 +40,22 @@ def getflow(nday, q_shutintime, figno=50):
     :return:
     """
 
+    day = 3600.0 * 24.0
     # These arrays will be used to control the odeint's
     qvar =      [ 0.0, 300.0, 500.0, 250.0, 0.0]                # flow rates throughout the simulation
-    tvar =      [ 0,      2,    70,    75,  85]                 # Times where the flow rates were initiated
+    tvar =      [ 0.2,      2,    70,    75,  85]               # Times where the flow rates were initiated. DONT START AT ZERO TIME
     dtvar =     [    0.2,   1.0,   1.0,  1.0]                   # step interval for getting pressures, in days. Oversample startup
     ind_shut =  2                                               # we shutin at index 2. modifies boundary condition
     nvar = len(tvar)
+    tvard, dtvard = [], []
+    for i in range(len(tvar)):
+        tvard.append(tvar[i] * day)
+    for i in range(len(dtvar)):
+        dtvard.append(dtvar[i] * day)
     times_ode, q_ode = [], []
     for i in range(len(dtvar)):
-        times_ode.append(np.arange( tvar[i], tvar[i+1], dtvar[i]))
+        times_ode.append(np.arange(tvard[i], tvard[i+1], dtvard[i]))
         q_ode.append(np.ones(len(times_ode[i])) * qvar[i])
-
-    print times_ode
-
 
     if len(qvar) != len(tvar):
         print 'Error: qvar and tvar need to be same length'
@@ -66,7 +69,7 @@ def getflow(nday, q_shutintime, figno=50):
     day = 0
     for i in range(nvar-1):
         flow = qvar[i]
-        for j in range(tvar[i], tvar[i+1]):
+        for j in range(int(tvar[i]), int(tvar[i+1])):
             x.append(day)
             y.append(flow)
             day += 1
@@ -76,7 +79,7 @@ def getflow(nday, q_shutintime, figno=50):
 
     # Plot the flow
     plt.figure(figno)
-    plt.plot(tvar, qvar, 'ro')
+    plt.plot(tvard, qvar, 'ro')
     plt.plot(x, y, 'k-')
     for i in range(len(dtvar)):
         plt.plot(times_ode[i], q_ode[i], 'ko-', markersize=3)

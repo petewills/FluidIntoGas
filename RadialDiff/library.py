@@ -93,6 +93,7 @@ def linesolve(lr, gp, tvec, fr):
     # Loop over separate odeints. Note that one is shutin (ind_shutin)
     h0 = 0.001
     y = []
+    # print 'bef times: ', fdprm.tvals_bef[-1]
     print 'shut index:', fdprm.ind_shut
     for i in range(fdprm.ind_shut):
         print 'times: ', fdprm.times_ode[i]
@@ -100,14 +101,17 @@ def linesolve(lr, gp, tvec, fr):
             times = fdprm.times_ode[i] - fdprm.times_ode[i-1][-1]
         else:
             times = fdprm.times_ode[0]
-        print 'initial: ',  y0/1000000
+        print 'times, old times: ',  fdprm.times_ode[i], fdprm.tvals_bef
         y_tmp, output = odeint(rhs, y0, times, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, 0.0,))
         y0 = y_tmp[-1]                          # Next is initialized with last step in this.
         print 'final: ',  y0/1000000, np.shape(y_tmp)
         y.append(y_tmp)
     print 'Done  ODEINT up to shutin'
 
-    # some kind of problem getting pressure diffusion to higher radii.
+    # Looks like I fixed the problem by using correct units for tvar
+    #   1. now need to complete the iterations
+    #   2. DOUBLE CHECK that we are doing the right thing in tvars parms to odeint! eg what is zero time
+    #   3. make the plotting work
     sys.exit()
 
     y0 = y_tmp[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
