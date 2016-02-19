@@ -92,39 +92,52 @@ def linesolve(lr, gp, tvec, fr):
 
     # Loop over separate odeints. Note that one is shutin (ind_shutin)
     h0 = 0.001
-    y = []
-    # print 'bef times: ', fdprm.tvals_bef[-1]
+    ntimes = 0
     print 'shut index:', fdprm.ind_shut
     for i in range(fdprm.ind_shut):
-        print 'times: ', fdprm.times_ode[i]
         if i > 0:
             times = fdprm.times_ode[i] - fdprm.times_ode[i-1][-1]
         else:
             times = fdprm.times_ode[0]
-        print 'times, old times: ',  fdprm.times_ode[i], fdprm.tvals_bef
         y_tmp, output = odeint(rhs, y0, times, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, 0.0,))
         y0 = y_tmp[-1]                          # Next is initialized with last step in this.
-        print 'final: ',  y0/1000000, np.shape(y_tmp)
-        y.append(y_tmp)
+        if i > 0:
+            y_all = np.concatenate([y_all, y_tmp[0:, :]], axis=0)
+        else:
+            y_all = np.copy(y_tmp)
+        ntimes += len(times)
     print 'Done  ODEINT up to shutin'
+    print 'y_all shape: ', np.shape(y_all)
+
+
+    # Create one vector for all times
+    times_all = np.zeros(ntimes)
+    itimes = 0
+    for i in range(2):
+        for j in range(len(fdprm.times_ode[i])):
+            print itimes, i, j, ntimes, len(fdprm.times_ode[i])
+            times_all[itimes] = float(fdprm.times_ode[i][j])
+            itimes += 1
+
+    print 'times long vector: ', len(times_all), times_all
+
 
     # Looks like I fixed the problem by using correct units for tvar
     #   1. now need to complete the iterations
     #   2. DOUBLE CHECK that we are doing the right thing in tvars parms to odeint! eg what is zero time
     #   3. make the plotting work
-    sys.exit()
 
-    y0 = y_tmp[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
-    y0[1] = y0[0]
+    # y0 = y_tmp[len(y_bef) - 1, :]              # After the shutin, we have no more fluid flow in boundary condition
+    # y0[1] = y0[0]
 
-    fdprm.prev = 0.0
-    tbeg_real = fdprm.tvals_bef[-1]
-    y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, tbeg_real))
-    print 'Done second ODEINT', np.shape(y_aft)
+    # fdprm.prev = 0.0
+    # tbeg_real = fdprm.tvals_bef[-1]
+    # y_aft, output = odeint(rhs, y0, fdprm.tvals_aft, h0=h0, hmax=2000.0, mxstep=2000, full_output=True, args=(lr, tvec, gp, tbeg_real))
+    # print 'Done second ODEINT', np.shape(y_aft)
 
-    y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
-    plot_result(fdprm.r, fdprm.tvals, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
-    plot_result_points(fdprm.r, fdprm.tvals, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
+    # y_all = np.concatenate([y_bef, y_aft[0:, :]], axis=0)
+    plot_result(fdprm.r, times_all, y_all, fig=10, compare=True)          # Plot results on IRREGULAR grid
+    plot_result_points(fdprm.r, times_all, y_all, fig=11, compare=True, plot_r=[5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])    # Plot results at spatial points
     return y_all
 
 """
@@ -219,6 +232,7 @@ def plot_result(r, tvals, yp, fig=10, compare=False):
     plt.title('FD Well Pressure(MPa)')
     plt.xlabel('Radial node')
     plt.ylabel('Time step')
+    print 'image data: ', yp
     plt.imshow(yp, aspect='auto')
     plt.grid()
     plt.colorbar()
